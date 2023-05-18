@@ -175,6 +175,7 @@ static void _ExecuteMainThreadRunLoopSources() {
 #ifdef __GCDWEBSERVER_ENABLE_TESTING__
   BOOL _recording;
 #endif
+  dispatch_queue_t _groupQueue;
 }
 
 + (void)initialize {
@@ -183,6 +184,8 @@ static void _ExecuteMainThreadRunLoopSources() {
 
 - (instancetype)init {
   if ((self = [super init])) {
+    dispatch_queue_attr_t qosAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
+    _groupQueue = dispatch_queue_create("fm.muah.groupQueue", qosAttribute);
     _syncQueue = dispatch_queue_create([NSStringFromClass([self class]) UTF8String], DISPATCH_QUEUE_SERIAL);
     _sourceGroup = dispatch_group_create();
     _handlers = [[NSMutableArray alloc] init];
@@ -672,9 +675,9 @@ static inline NSString* _EncodeBase64(NSString* string) {
 
 - (void)_stop:(GCDVoidCallback) callback {
   __weak typeof(self) weakSelf = self;
-  dispatch_queue_attr_t qosAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, QOS_CLASS_USER_INITIATED, 0);
-  dispatch_queue_t queue = dispatch_queue_create("fm.muah.customQueue", qosAttribute);
-  dispatch_async(queue, ^{
+  dispatch_queue_attr_t qosAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
+  dispatch_queue_t _groupQueue = dispatch_queue_create("fm.muah.groupQueue", qosAttribute);
+  dispatch_async(_groupQueue, ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     GWS_DCHECK(strongSelf->_source4 != NULL);
 
