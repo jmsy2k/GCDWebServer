@@ -675,8 +675,6 @@ static inline NSString* _EncodeBase64(NSString* string) {
 
 - (void)_stop:(GCDVoidCallback) callback {
   __weak typeof(self) weakSelf = self;
-  dispatch_queue_attr_t qosAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
-  dispatch_queue_t _groupQueue = dispatch_queue_create("fm.muah.groupQueue", qosAttribute);
   dispatch_async(_groupQueue, ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     GWS_DCHECK(strongSelf->_source4 != NULL);
