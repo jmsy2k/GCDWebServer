@@ -267,10 +267,16 @@ static void _ExecuteMainThreadRunLoopSources() {
   GWS_DCHECK([NSThread isMainThread]);
   if (_backgroundTask != UIBackgroundTaskInvalid) {
     if (_suspendInBackground && ([[UIApplication sharedApplication] applicationState] == UIApplicationStateBackground) && _source4) {
-      [self _stop];
+      __weak typeof(self) weakSelf = self;
+      [self _stop:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        [[UIApplication sharedApplication] endBackgroundTask:strongSelf->_backgroundTask];
+        strongSelf->_backgroundTask = UIBackgroundTaskInvalid;
+      }];
+    } else {
+      [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask];
+      _backgroundTask = UIBackgroundTaskInvalid;
     }
-    [[UIApplication sharedApplication] endBackgroundTask:_backgroundTask];
-    _backgroundTask = UIBackgroundTaskInvalid;
     GWS_LOG_DEBUG(@"Did end background task");
   }
 }
@@ -663,74 +669,84 @@ static inline NSString* _EncodeBase64(NSString* string) {
   return YES;
 }
 
-- (void)_stop {
-  GWS_DCHECK(_source4 != NULL);
+typedef void (^GCDVoidCallback)(void);
+- (void)_stop:(GCDVoidCallback) callback {
+  __weak typeof(self) weakSelf = self;
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    GWS_DCHECK(strongSelf->_source4 != NULL);
 
-  if (_dnsService) {
-    _dnsAddress = nil;
-    _dnsPort = 0;
-    if (_dnsSource) {
-      CFRunLoopSourceInvalidate(_dnsSource);
-      CFRelease(_dnsSource);
-      _dnsSource = NULL;
+    if (strongSelf->_dnsService) {
+      strongSelf->_dnsAddress = nil;
+      strongSelf->_dnsPort = 0;
+      if (strongSelf->_dnsSource) {
+        CFRunLoopSourceInvalidate(strongSelf->_dnsSource);
+        CFRelease(strongSelf->_dnsSource);
+        strongSelf->_dnsSource = NULL;
+      }
+      if (strongSelf->_dnsSocket) {
+        CFRelease(strongSelf->_dnsSocket);
+        strongSelf->_dnsSocket = NULL;
+      }
+      DNSServiceRefDeallocate(strongSelf->_dnsService);
+      strongSelf->_dnsService = NULL;
     }
-    if (_dnsSocket) {
-      CFRelease(_dnsSocket);
-      _dnsSocket = NULL;
+
+    if (strongSelf->_registrationService) {
+      if (strongSelf->_resolutionService) {
+        CFNetServiceUnscheduleFromRunLoop(strongSelf->_resolutionService, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+        CFNetServiceSetClient(strongSelf->_resolutionService, NULL, NULL);
+        CFNetServiceCancel(strongSelf->_resolutionService);
+        CFRelease(strongSelf->_resolutionService);
+        strongSelf->_resolutionService = NULL;
+      }
+      CFNetServiceUnscheduleFromRunLoop(strongSelf->_registrationService, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+      CFNetServiceSetClient(strongSelf->_registrationService, NULL, NULL);
+      CFNetServiceCancel(strongSelf->_registrationService);
+      CFRelease(strongSelf->_registrationService);
+      strongSelf->_registrationService = NULL;
     }
-    DNSServiceRefDeallocate(_dnsService);
-    _dnsService = NULL;
-  }
 
-  if (_registrationService) {
-    if (_resolutionService) {
-      CFNetServiceUnscheduleFromRunLoop(_resolutionService, CFRunLoopGetMain(), kCFRunLoopCommonModes);
-      CFNetServiceSetClient(_resolutionService, NULL, NULL);
-      CFNetServiceCancel(_resolutionService);
-      CFRelease(_resolutionService);
-      _resolutionService = NULL;
-    }
-    CFNetServiceUnscheduleFromRunLoop(_registrationService, CFRunLoopGetMain(), kCFRunLoopCommonModes);
-    CFNetServiceSetClient(_registrationService, NULL, NULL);
-    CFNetServiceCancel(_registrationService);
-    CFRelease(_registrationService);
-    _registrationService = NULL;
-  }
+    dispatch_source_cancel(strongSelf->_source6);
+    dispatch_source_cancel(strongSelf->_source4);
+    dispatch_group_wait(strongSelf->_sourceGroup, DISPATCH_TIME_FOREVER);  // Wait until the cancellation handlers have been called which guarantees the listening sockets are closed
+  #if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
+    dispatch_release(_source6);
+  #endif
+    strongSelf->_source6 = NULL;
+  #if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
+    dispatch_release(_source4);
+  #endif
+    strongSelf->_source4 = NULL;
+    strongSelf->_port = 0;
+    strongSelf->_bindToLocalhost = NO;
 
-  dispatch_source_cancel(_source6);
-  dispatch_source_cancel(_source4);
-  dispatch_group_wait(_sourceGroup, DISPATCH_TIME_FOREVER);  // Wait until the cancellation handlers have been called which guarantees the listening sockets are closed
-#if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
-  dispatch_release(_source6);
-#endif
-  _source6 = NULL;
-#if !OS_OBJECT_USE_OBJC_RETAIN_RELEASE
-  dispatch_release(_source4);
-#endif
-  _source4 = NULL;
-  _port = 0;
-  _bindToLocalhost = NO;
-
-  _serverName = nil;
-  _authenticationRealm = nil;
-  _authenticationBasicAccounts = nil;
-  _authenticationDigestAccounts = nil;
-
-  dispatch_async(dispatch_get_main_queue(), ^{
-    if (self->_disconnectTimer) {
-      CFRunLoopTimerInvalidate(self->_disconnectTimer);
-      CFRelease(self->_disconnectTimer);
-      self->_disconnectTimer = NULL;
-      [self _didDisconnect];
-    }
-  });
-
-  GWS_LOG_INFO(@"%@ stopped", [self class]);
-  if ([_delegate respondsToSelector:@selector(webServerDidStop:)]) {
+    strongSelf->_serverName = nil;
+    strongSelf->_authenticationRealm = nil;
+    strongSelf->_authenticationBasicAccounts = nil;
+    strongSelf->_authenticationDigestAccounts = nil;
     dispatch_async(dispatch_get_main_queue(), ^{
-      [self->_delegate webServerDidStop:self];
+      __strong typeof(weakSelf) strongSelf = weakSelf;
+      if (strongSelf->_disconnectTimer) {
+        CFRunLoopTimerInvalidate(strongSelf->_disconnectTimer);
+        CFRelease(strongSelf->_disconnectTimer);
+        strongSelf->_disconnectTimer = NULL;
+        [strongSelf _didDisconnect];
+      }
     });
-  }
+
+    GWS_LOG_INFO(@"%@ stopped", [strongSelf class]);
+    if ([strongSelf->_delegate respondsToSelector:@selector(webServerDidStop:)]) {
+      __strong typeof(weakSelf) strongSelf = weakSelf;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [strongSelf->_delegate webServerDidStop:self];
+        
+        callback();
+      });
+    }
+    
+  });
+  
 }
 
 #if TARGET_OS_IPHONE
@@ -739,7 +755,8 @@ static inline NSString* _EncodeBase64(NSString* string) {
   GWS_DCHECK([NSThread isMainThread]);
   GWS_LOG_DEBUG(@"Did enter background");
   if ((_backgroundTask == UIBackgroundTaskInvalid) && _source4) {
-    [self _stop];
+    [self _stop:^{
+    }];
   }
 }
 
@@ -783,7 +800,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
   return (_options ? YES : NO);
 }
 
-- (void)stop {
+- (void)stop:(GCDVoidCallback) callback {
   if (_options) {
 #if TARGET_OS_IPHONE
     if (_suspendInBackground) {
@@ -792,7 +809,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
     }
 #endif
     if (_source4) {
-      [self _stop];
+      [self _stop:callback];
     }
     _options = nil;
   } else {
