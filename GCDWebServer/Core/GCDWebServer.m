@@ -669,7 +669,7 @@ static inline NSString* _EncodeBase64(NSString* string) {
   return YES;
 }
 
-typedef void (^GCDVoidCallback)(void);
+
 - (void)_stop:(GCDVoidCallback) callback {
   __weak typeof(self) weakSelf = self;
   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{

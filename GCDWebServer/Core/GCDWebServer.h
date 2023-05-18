@@ -31,7 +31,7 @@
 #import "GCDWebServerResponse.h"
 
 NS_ASSUME_NONNULL_BEGIN
-
+typedef void (^GCDVoidCallback)(void);
 /**
  *  The GCDWebServerMatchBlock is called for every handler added to the
  *  GCDWebServer whenever a new HTTP request has started (i.e. HTTP headers have
@@ -388,7 +388,7 @@ extern NSString* const GCDWebServerAuthenticationMethod_DigestAccess;
  *  currently handling already received HTTP requests. These connections will
  *  continue to execute normally until completion.
  */
-- (void)stop;
+- (void)stop:(GCDVoidCallback) callback;
 
 @end
 
