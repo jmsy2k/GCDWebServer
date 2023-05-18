@@ -672,7 +672,9 @@ static inline NSString* _EncodeBase64(NSString* string) {
 
 - (void)_stop:(GCDVoidCallback) callback {
   __weak typeof(self) weakSelf = self;
-  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+  dispatch_queue_attr_t qosAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, QOS_CLASS_BACKGROUND, 0);
+  dispatch_queue_t queue = dispatch_queue_create("fm.muah.customQueue", qosAttribute);
+  dispatch_async(queue, ^{
     __strong typeof(weakSelf) strongSelf = weakSelf;
     GWS_DCHECK(strongSelf->_source4 != NULL);
 
@@ -1339,9 +1341,11 @@ static void _LogResult(NSString* format, ...) {
       _ExecuteMainThreadRunLoopSources();
     }
 
-    [self stop];
+    [self stop:^{
+      _ExecuteMainThreadRunLoopSources();
+    }];
 
-    _ExecuteMainThreadRunLoopSources();
+    
   }
   return result;
 }
